@@ -4,6 +4,8 @@ specifiers:
   '@rushstack/eslint-patch': ^1.1.4
   '@types/express': ^4.17.16
   '@types/node': ^18.11.12
+  '@types/ua-parser-js': ^0.7.36
+  '@types/ws': ^8.5.4
   '@vitejs/plugin-vue': ^4.0.0
   '@vue/eslint-config-prettier': ^7.0.0
   '@vue/eslint-config-typescript': ^11.0.0
@@ -14,19 +16,25 @@ specifiers:
   npm-run-all: ^4.1.5
   prettier: ^2.7.1
   typescript: ~4.7.4
+  ua-parser-js: ^1.0.33
   vite: ^4.0.0
   vue: ^3.2.45
   vue-tsc: ^1.0.12
+  ws: ^8.12.0
 
 dependencies:
   express: 4.18.2
+  ua-parser-js: 1.0.33
   vite: 4.0.4_@types+node@18.11.18
   vue: 3.2.45
+  ws: 8.12.0
 
 devDependencies:
   '@rushstack/eslint-patch': 1.2.0
   '@types/express': 4.17.16
   '@types/node': 18.11.18
+  '@types/ua-parser-js': 0.7.36
+  '@types/ws': 8.5.4
   '@vitejs/plugin-vue': 4.0.0_vite@4.0.4+vue@3.2.45
   '@vue/eslint-config-prettier': 7.0.0_6xprzernlpxwjedpj2snzq4bpq
   '@vue/eslint-config-typescript': 11.0.2_2yczvdazwsanxcjasbwukfyw6e
@@ -358,6 +366,16 @@ packages:
     resolution: {integrity: sha512-z5xyF6uh8CbjAu9760KDKsH2FcDxZ2tFCsA4HIMWE6IkiYMXfVoa+4f9KX+FN0ZLsaMw1WNG2ETLA6N+/YA+cg==}
     dependencies:
       '@types/mime': 3.0.1
+      '@types/node': 18.11.18
+    dev: true
+
+  /@types/ua-parser-js/0.7.36:
+    resolution: {integrity: sha512-N1rW+njavs70y2cApeIw1vLMYXRwfBy+7trgavGuuTfOd7j1Yh7QTRc/yqsPl6ncokt72ZXuxEU0PiCp9bSwNQ==}
+    dev: true
+
+  /@types/ws/8.5.4:
+    resolution: {integrity: sha512-zdQDHKUgcX/zBc4GrwsE/7dVdAD8JR4EuiAXiiUhhfyIJXXb2+PrGshFyeXWQPMmmZ2XxgaqclgpIC7eTXc1mg==}
+    dependencies:
       '@types/node': 18.11.18
     dev: true
 
@@ -2457,6 +2475,10 @@ packages:
     hasBin: true
     dev: true
 
+  /ua-parser-js/1.0.33:
+    resolution: {integrity: sha512-RqshF7TPTE0XLYAqmjlu5cLLuGdKrNu9O1KLA/qp39QtbZwuzwv1dT46DZSopoUMsYgXpB3Cv8a03FI8b74oFQ==}
+    dev: false
+
   /unbox-primitive/1.0.2:
     resolution: {integrity: sha512-61pPlCD9h51VoreyJ0BReideM3MDKMKnh6+V9L08331ipq6Q8OFXZYiqP6n/tbHx4s5I9uRhcye6BrbkizkBDw==}
     dependencies:
@@ -2621,6 +2643,19 @@ packages:
   /wrappy/1.0.2:
     resolution: {integrity: sha512-l4Sp/DRseor9wL6EvV2+TuQn63dMkPjZ/sp9XkghTEbV9KlPS1xUsZ3u7/IQO4wxtcFB4bgpQPRcR3QCvezPcQ==}
     dev: true
+
+  /ws/8.12.0:
+    resolution: {integrity: sha512-kU62emKIdKVeEIOIKVegvqpXMSTAMLJozpHZaJNDYqBjzlSYXQGviYwN1osDLJ9av68qHd4a2oSjd7yD4pacig==}
+    engines: {node: '>=10.0.0'}
+    peerDependencies:
+      bufferutil: ^4.0.1
+      utf-8-validate: '>=5.0.2'
+    peerDependenciesMeta:
+      bufferutil:
+        optional: true
+      utf-8-validate:
+        optional: true
+    dev: false
 
   /xml-name-validator/4.0.0:
     resolution: {integrity: sha512-ICP2e+jsHvAj2E2lIHxa5tjXRlKDJo4IdvPvCXbXQGdzSfmSpNVyIKMvoZHjDY9DP0zV17iI85o90vRFXNccRw==}
