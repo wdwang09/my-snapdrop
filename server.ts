@@ -1,10 +1,9 @@
 import * as express from "express";
 import { createServer as createViteServer } from "vite";
+import { env } from "process";
 import { createServer as createHttpServer } from "http";
-// import type { Server as HttpServerType, IncomingMessage } from "http";
 import type * as http from "http";
 import { Server as WsServer } from "ws";
-// import type { WebSocket } from "ws";
 import type * as ws from "ws";
 import * as uaParser from "ua-parser-js";
 
@@ -30,8 +29,10 @@ class Peer {
     this.timerId = null;
     this.lastBeat = Date.now();
 
+    console.log("===");
     console.log("peer:", this.peerId);
     console.log("name:", this.name);
+    console.log("===");
   }
 
   private setPeerId(request: http.IncomingMessage) {
@@ -257,14 +258,22 @@ class MyServer {
 }
 
 async function createServer(port = 3000) {
+  const productionRootPath = "dist";
+  const isProductionMode = env.NODE_ENV === "production";
+
   const app = express();
 
-  const vite = await createViteServer({
-    server: { middlewareMode: true },
-    appType: "spa",
-  });
-
-  app.use(vite.middlewares);
+  if (!isProductionMode) {
+    console.log("> Development Mode");
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+  } else {
+    console.log("> Production Mode");
+    app.use(express.static(productionRootPath));
+  }
 
   console.log(`> Server is ready on http://localhost:${port}`);
   const server = createHttpServer(app);
