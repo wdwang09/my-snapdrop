@@ -1,5 +1,8 @@
 server.js
 
+tmp
+del
+
 # Logs
 logs
 *.log

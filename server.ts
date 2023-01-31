@@ -29,17 +29,17 @@ class Peer {
     this.timerId = null;
     this.lastBeat = Date.now();
 
-    console.log("===");
-    console.log("peer:", this.peerId);
-    console.log("name:", this.name);
-    console.log("===");
+    // console.log("===");
+    // console.log("peer:", this.peerId);
+    // console.log("name:", this.name);
+    // console.log("===");
   }
 
   private setPeerId(request: http.IncomingMessage) {
     if (request["peerId"]) {
       this.peerId = request["peerId"];
     } else {
-      this.peerId = request.headers.cookie ?? "".replace("peerid=", "");
+      this.peerId = (request.headers.cookie ?? "").replace("peerid=", "");
     }
   }
 
@@ -60,7 +60,7 @@ class Peer {
 
     if (!deviceName) deviceName = "Unknown Device";
 
-    const displayName = Peer.hashCode(this.peerId).toString();
+    const displayName = this.peerId.slice(0, 8);
 
     this.name = {
       model: ua.device.model,
@@ -70,15 +70,6 @@ class Peer {
       deviceName,
       displayName,
     };
-  }
-
-  static hashCode(str: string): number {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-      hash = (hash << 5) - hash + str.charCodeAt(i);
-      hash |= 0; // Convert to 32bit integer
-    }
-    return hash;
   }
 
   public getInfo() {
