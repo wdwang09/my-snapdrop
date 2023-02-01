@@ -7,24 +7,27 @@ import { Server as WsServer } from "ws";
 import type * as ws from "ws";
 import * as uaParser from "ua-parser-js";
 
+type PeerInfo = {
+  peerId: string;
+  model: string | undefined;
+  os: string | undefined;
+  browser: string | undefined;
+  type: string | undefined;
+  deviceName: string;
+  displayName: string;
+};
+
 class Peer {
   socket: ws.WebSocket;
   peerId: string;
-  name: {
-    model: string | undefined;
-    os: string | undefined;
-    browser: string | undefined;
-    type: string | undefined;
-    deviceName: string;
-    displayName: string;
-  };
+  info: PeerInfo;
   timerId: NodeJS.Timeout | null;
   lastBeat: number;
 
   constructor(socket: ws.WebSocket, request: http.IncomingMessage) {
     this.socket = socket;
     this.setPeerId(request);
-    this.setName(request);
+    this.setInfo(request);
     // for keepalive
     this.timerId = null;
     this.lastBeat = Date.now();
@@ -43,7 +46,7 @@ class Peer {
     }
   }
 
-  private setName(req: http.IncomingMessage) {
+  private setInfo(req: http.IncomingMessage) {
     const ua = uaParser(req.headers["user-agent"]);
 
     let deviceName = "";
@@ -62,7 +65,8 @@ class Peer {
 
     const displayName = this.peerId.slice(0, 8);
 
-    this.name = {
+    this.info = {
+      peerId: this.peerId,
       model: ua.device.model,
       os: ua.os.name,
       browser: ua.browser.name,
@@ -72,12 +76,12 @@ class Peer {
     };
   }
 
-  public getInfo() {
-    return {
-      id: this.peerId,
-      name: this.name,
-    };
-  }
+  // public getInfo() {
+  //   return {
+  //     id: this.peerId,
+  //     name: this.name,
+  //   };
+  // }
 
   static uuid() {
     let uuid = "";
@@ -129,8 +133,8 @@ class MyServer {
     this.send(peer, {
       type: "display-name",
       message: {
-        displayName: peer.name.displayName,
-        deviceName: peer.name.deviceName,
+        displayName: peer.info.displayName,
+        deviceName: peer.info.deviceName,
       },
     });
   }
@@ -141,17 +145,17 @@ class MyServer {
       // notify other peer that somebody joins
       this.send(otherPeer, {
         type: "peer-joined",
-        peer: peer.getInfo(),
+        peer: peer.info,
       });
     }
 
-    // send present peer-list to current peer
+    // send existing peer-list to current peer
     const otherPeers: unknown[] = [];
     for (const otherPeerId in this.room) {
-      otherPeers.push(this.room[otherPeerId].getInfo());
+      otherPeers.push(this.room[otherPeerId].info);
     }
     this.send(peer, {
-      type: "peers",
+      type: "existing-peers",
       peers: otherPeers,
     });
 
@@ -221,7 +225,7 @@ class MyServer {
   }
 
   private send(peer: Peer, message: Object) {
-    // if (!peer) return;  // TODO
+    // if (!peer) return;
     if (peer.socket.readyState !== peer.socket.OPEN) return; // TODO
     const msg = JSON.stringify(message);
     peer.socket.send(msg, () => "");
@@ -241,12 +245,14 @@ class MyServer {
   }
 
   private cancelKeepAlive(peer: Peer) {
-    // if (peer)  // TODO
+    // if (peer)
     if (peer.timerId) {
       clearTimeout(peer.timerId);
     }
   }
 }
+
+// ===
 
 async function createServer(port = 3000) {
   const productionRootPath = "dist";

@@ -1,13 +1,4 @@
-class Events {
-  static fire(type: string, detail: Object) {
-    // https://developer.mozilla.org/en-US/docs/Web/API/EventTarget/dispatchEvent
-    window.dispatchEvent(new CustomEvent(type, { detail: detail }));
-  }
-
-  static on(type: string, callback: EventListenerOrEventListenerObject) {
-    return window.addEventListener(type, callback, false);
-  }
-}
+import { PublicEvent } from "./public_event";
 
 export class ServerConnection {
   private reconnectTimer: number | undefined;
@@ -15,18 +6,18 @@ export class ServerConnection {
 
   constructor() {
     this.socket = null;
-    this.connect();
-    Events.on("beforeunload", () => this.disconnect());
-    Events.on("pagehide", () => this.disconnect());
+    this.connectToServer();
+    PublicEvent.on("beforeunload", () => this.disconnect());
+    PublicEvent.on("pagehide", () => this.disconnect());
     document.addEventListener("visibilitychange", () =>
       this.onVisibilityChange()
     );
   }
 
-  private connect() {
+  private connectToServer() {
     clearTimeout(this.reconnectTimer);
     if (this.isConnected() || this.isConnecting()) return;
-    const ws = new WebSocket(this.endpoint());
+    const ws = new WebSocket(this.webSocketUrl());
     ws.binaryType = "arraybuffer";
     ws.onopen = () => {
       console.log("WS: server connected.");
@@ -38,60 +29,61 @@ export class ServerConnection {
   }
 
   private onMessage(msgStr: string) {
+    // Change ws message to public event. Decoupled with other parts.
     const msg = JSON.parse(msgStr);
     console.log("WS receive message:", msgStr);
     switch (msg.type as string) {
-      case "peers":
-        Events.fire("peers", msg.peers);
+      case "existing-peers":
+        PublicEvent.fire("existing-peers", msg.peers);
         break;
       case "peer-joined":
-        Events.fire("peer-joined", msg.peer);
+        PublicEvent.fire("peer-joined", msg.peer);
         break;
       case "peer-left":
-        Events.fire("peer-left", msg.peerId);
+        PublicEvent.fire("peer-left", msg.peerId);
         break;
       case "signal":
-        Events.fire("signal", msg);
+        PublicEvent.fire("signal", msg);
+        break;
+      case "display-name":
+        PublicEvent.fire("display-name", msg);
         break;
       case "ping":
         this.sendToServer({ type: "pong" });
-        break;
-      case "display-name":
-        Events.fire("display-name", msg);
         break;
       default:
         console.error("WS: unknown message type", msg);
     }
   }
 
-  private sendToServer(message: Object) {
+  public sendToServer(message: object) {
     if (!this.isConnected()) return;
     this.socket!.send(JSON.stringify(message));
   }
 
-  private endpoint() {
+  private webSocketUrl() {
     const protocol = location.protocol.startsWith("https") ? "wss" : "ws";
     const url = protocol + "://" + location.host + location.pathname;
     return url;
   }
 
   private disconnect() {
-    if (this.socket === null) return;
     this.sendToServer({ type: "disconnect" });
+    if (this.socket === null) return;
     this.socket.onclose = null;
     this.socket.close();
   }
 
   private onDisconnect() {
     console.log("WS: server disconnected");
-    Events.fire("notify-user", "Connection lost. Retry in 5 seconds...");
+    PublicEvent.fire("notify-user", "Connection lost. Retry in 5 seconds...");
     clearTimeout(this.reconnectTimer);
-    this.reconnectTimer = setTimeout(() => this.connect(), 5000);
+    this.reconnectTimer = setTimeout(() => this.connectToServer(), 5000);
   }
 
   private onVisibilityChange() {
     if (document.hidden) return;
-    this.connect();
+    this.connectToServer();
   }
 
   public isConnected() {
