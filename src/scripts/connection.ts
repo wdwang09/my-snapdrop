@@ -31,23 +31,29 @@ export class ServerConnection {
   private onMessage(msgStr: string) {
     // Change ws message to public event. Decoupled with other parts.
     const msg = JSON.parse(msgStr);
-    console.log("WS receive message:", msgStr);
+    // console.log("WS receive message:", msgStr);
     switch (msg.type as string) {
-      case "existing-peers":
-        PublicEvent.fire("existing-peers", msg.peers);
+      case "peers":
+        PublicEvent.fire("peers", msg.message);
+        console.log("WS peers:", Object.keys(msg.message.peerInfo));
+        // console.log("WS selfInfo:", msg.message.peerInfo[msg.message.selfId]);
         break;
-      case "peer-joined":
-        PublicEvent.fire("peer-joined", msg.peer);
-        break;
-      case "peer-left":
-        PublicEvent.fire("peer-left", msg.peerId);
-        break;
-      case "signal":
-        PublicEvent.fire("signal", msg);
-        break;
-      case "display-name":
-        PublicEvent.fire("display-name", msg);
-        break;
+      // case "existing-peers":
+      //   PublicEvent.fire("existing-peers", msg.peers);
+      //   break;
+      // case "peer-joined":
+      //   PublicEvent.fire("peer-joined", msg.peer);
+      //   break;
+      // case "peer-left":
+      //   PublicEvent.fire("peer-left", msg.peerId);
+      //   break;
+      // case "signal":
+      //   PublicEvent.fire("signal", msg);
+      //   break;
+      // case "self-info":
+      //   PublicEvent.fire("self-info", msg);
+      //   console.log("WS self-info:", msg.message);
+      //   break;
       case "ping":
         this.sendToServer({ type: "pong" });
         break;
@@ -62,6 +68,7 @@ export class ServerConnection {
   }
 
   private webSocketUrl() {
+    // https://developer.mozilla.org/en-US/docs/Web/API/Location
     const protocol = location.protocol.startsWith("https") ? "wss" : "ws";
     const url = protocol + "://" + location.host + location.pathname;
     return url;

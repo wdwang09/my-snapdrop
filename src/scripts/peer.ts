@@ -1,7 +1,7 @@
 import { PublicEvent } from "./public_event";
 import type { ServerConnection } from "./connection";
 
-type PeerInfo = {
+export type PeerInfo = {
   peerId: string;
   model: string | undefined;
   os: string | undefined;
@@ -16,7 +16,7 @@ class RTCPeer {
   readonly peerId: string;
   private isCaller: boolean = false;
   private rtcConn: RTCPeerConnection | null = null;
-  private channel: any; // TODO
+  private channel: any; // TODO type
   static readonly rtcConfig = {
     sdpSemantics: "unified-plan",
     iceServers: [
@@ -154,7 +154,7 @@ export class PeersManager {
     this.peers = {};
     this.serverConnection = serverConnection;
     PublicEvent.on("existing-peers", (e) =>
-      this.onExistingPeers((e as any).detail)
+      this.onExistingPeers((e as CustomEvent).detail)
     );
   }
 

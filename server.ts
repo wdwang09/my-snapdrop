@@ -76,13 +76,6 @@ class Peer {
     };
   }
 
-  // public getInfo() {
-  //   return {
-  //     id: this.peerId,
-  //     name: this.name,
-  //   };
-  // }
-
   static uuid() {
     let uuid = "";
     for (let ii = 0; ii < 32; ii += 1) {
@@ -130,37 +123,48 @@ class MyServer {
     peer.socket.on("error", console.error);
     this.keepAlive(peer);
 
-    this.send(peer, {
-      type: "display-name",
-      message: {
-        displayName: peer.info.displayName,
-        deviceName: peer.info.deviceName,
-      },
-    });
+    // this.send(peer, {
+    //   type: "self-info",
+    //   message: {
+    //     peerId: peer.peerId,
+    //     displayName: peer.info.displayName,
+    //     deviceName: peer.info.deviceName,
+    //   },
+    // });
   }
 
-  private joinRoom(peer: Peer) {
-    for (const otherPeerId in this.room) {
-      const otherPeer = this.room[otherPeerId];
-      // notify other peer that somebody joins
-      this.send(otherPeer, {
-        type: "peer-joined",
-        peer: peer.info,
-      });
-    }
+  private joinRoom(newPeer: Peer) {
+    // for (const otherPeerId in this.room) {
+    //   const otherPeer = this.room[otherPeerId];
+    //   // notify other peer that somebody joins
+    //   this.send(otherPeer, {
+    //     type: "peer-joined",
+    //     peer: peer.info,
+    //   });
+    // }
 
-    // send existing peer-list to current peer
-    const otherPeers: unknown[] = [];
-    for (const otherPeerId in this.room) {
-      otherPeers.push(this.room[otherPeerId].info);
-    }
-    this.send(peer, {
-      type: "existing-peers",
-      peers: otherPeers,
-    });
+    // // send existing peer-list to current peer
+    // const otherPeers: unknown[] = [];
+    // for (const otherPeerId in this.room) {
+    //   otherPeers.push(this.room[otherPeerId].info);
+    // }
+    // this.send(peer, {
+    //   type: "existing-peers",
+    //   peers: otherPeers,
+    // });
 
     // join room
-    this.room[peer.peerId] = peer;
+    this.room[newPeer.peerId] = newPeer;
+
+    this.sendPeerListToClient();
+  }
+
+  private getAllPeerInfo(): Record<string, PeerInfo> {
+    const allPeers: Record<string, PeerInfo> = {};
+    for (const peerId in this.room) {
+      allPeers[peerId] = this.room[peerId].info;
+    }
+    return allPeers;
   }
 
   private onMessage(sender: Peer, message: ws.RawData) {
@@ -170,6 +174,7 @@ class MyServer {
     } catch (e) {
       return;
     }
+    // console.log("On Message!", sender.peerId, msg);
 
     switch (msg["type"]) {
       case "disconnect":
@@ -177,6 +182,7 @@ class MyServer {
         break;
       case "pong":
         sender.lastBeat = Date.now();
+        // this.sendPeerListToClient();
         break;
     }
 
@@ -193,7 +199,7 @@ class MyServer {
 
   private keepAlive(peer: Peer) {
     this.cancelKeepAlive(peer);
-    const timeout_ms = 30000;
+    const timeout_ms = 5000;
     if (!peer.lastBeat) {
       peer.lastBeat = Date.now();
     }
@@ -209,24 +215,50 @@ class MyServer {
 
   private leaveRoom(peer: Peer) {
     if (!this.room[peer.peerId]) return;
+
+    // TODO: If one browser opens two windows, closing one of them will trigger this function.
+
+    // this.room[peer.peerId].
+
     this.cancelKeepAlive(this.room[peer.peerId]);
 
     delete this.room[peer.peerId];
 
     peer.socket.terminate();
 
-    for (const otherPeerId in this.room) {
-      const otherPeer = this.room[otherPeerId];
-      this.send(otherPeer, {
-        type: "peer-left",
-        peerId: peer.peerId,
+    // for (const otherPeerId in this.room) {
+    //   const otherPeer = this.room[otherPeerId];
+    //   this.send(otherPeer, {
+    //     type: "peer-left",
+    //     peerId: peer.peerId,
+    //   });
+    // }
+    this.sendPeerListToClient();
+  }
+
+  private sendPeerListToClient() {
+    for (const peerId in this.room) {
+      this.send(peerId, {
+        type: "peers",
+        message: {
+          peerInfo: this.getAllPeerInfo(),
+          selfId: peerId,
+        },
       });
     }
   }
 
-  private send(peer: Peer, message: Object) {
-    // if (!peer) return;
-    if (peer.socket.readyState !== peer.socket.OPEN) return; // TODO
+  private send(peerObjectOrId: Peer | string, message: object) {
+    let peer: Peer | null = null;
+    if (typeof peerObjectOrId === "string") {
+      peer = this.room[peerObjectOrId];
+    } else {
+      peer = peerObjectOrId;
+    }
+    if (!peer) {
+      console.error("Send: Peer doesn't exists.");
+    }
+    if (peer.socket.readyState !== peer.socket.OPEN) return; // TODO to check
     const msg = JSON.stringify(message);
     peer.socket.send(msg, () => "");
   }
@@ -245,7 +277,6 @@ class MyServer {
   }
 
   private cancelKeepAlive(peer: Peer) {
-    // if (peer)
     if (peer.timerId) {
       clearTimeout(peer.timerId);
     }
@@ -261,7 +292,7 @@ async function createServer(port = 3000) {
   const app = express();
 
   if (!isProductionMode) {
-    console.log("> Development Mode");
+    console.log("> Development Mode with Vite Support");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
