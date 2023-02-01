@@ -22,38 +22,40 @@ export class ServerConnection {
     ws.onopen = () => {
       console.log("WS: server connected.");
     };
-    ws.onmessage = (event) => this.onMessage(event.data);
+    ws.onmessage = (event) => this.changeWsMsgToEvent(event.data);
     ws.onclose = () => this.onDisconnect();
     ws.onerror = (e) => console.error(e);
     this.socket = ws;
   }
 
-  private onMessage(msgStr: string) {
+  private changeWsMsgToEvent(msgStr: string) {
     // Change ws message to public event. Decoupled with other parts.
     const msg = JSON.parse(msgStr);
     // console.log("WS receive message:", msgStr);
     switch (msg.type as string) {
-      case "peers":
-        PublicEvent.fire("peers", msg.message);
-        console.log("WS peers:", Object.keys(msg.message.peerInfo));
-        // console.log("WS selfInfo:", msg.message.peerInfo[msg.message.selfId]);
+      // case "peers":
+      //   PublicEvent.fire("peers", msg.detail.message);
+      //   // console.log("WS peers:", Object.keys(msg.message.peerInfo));
+      //   // console.log("WS selfInfo:", msg.message.peerInfo[msg.message.selfId]);
+      //   break;
+      case "existing-peers":
+        console.log("WS existing-peers", msg.detail);
+        PublicEvent.fire("existing-peers", msg.detail);
         break;
-      // case "existing-peers":
-      //   PublicEvent.fire("existing-peers", msg.peers);
-      //   break;
-      // case "peer-joined":
-      //   PublicEvent.fire("peer-joined", msg.peer);
-      //   break;
-      // case "peer-left":
-      //   PublicEvent.fire("peer-left", msg.peerId);
-      //   break;
-      // case "signal":
-      //   PublicEvent.fire("signal", msg);
-      //   break;
+      case "peer-joined":
+        PublicEvent.fire("peer-joined", msg.detail);
+        break;
+      case "peer-left":
+        PublicEvent.fire("peer-left", msg.detail);
+        break;
       // case "self-info":
       //   PublicEvent.fire("self-info", msg);
       //   console.log("WS self-info:", msg.message);
       //   break;
+      case "signal": // webRTC
+        // console.log("WS signal:", msg.detail.from);
+        PublicEvent.fire("signal", msg.detail);
+        break;
       case "ping":
         this.sendToServer({ type: "pong" });
         break;
@@ -62,7 +64,7 @@ export class ServerConnection {
     }
   }
 
-  public sendToServer(message: object) {
+  public sendToServer(message: { type: string; detail?: object }) {
     if (!this.isConnected()) return;
     this.socket!.send(JSON.stringify(message));
   }

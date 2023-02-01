@@ -119,7 +119,9 @@ class MyServer {
 
   private onConnection(peer: Peer) {
     this.joinRoom(peer);
-    peer.socket.on("message", (message) => this.onMessage(peer, message));
+    peer.socket.on("message", (message) =>
+      this.onWsMsgFromClient(peer, message)
+    );
     peer.socket.on("error", console.error);
     this.keepAlive(peer);
 
@@ -134,29 +136,32 @@ class MyServer {
   }
 
   private joinRoom(newPeer: Peer) {
-    // for (const otherPeerId in this.room) {
-    //   const otherPeer = this.room[otherPeerId];
-    //   // notify other peer that somebody joins
-    //   this.send(otherPeer, {
-    //     type: "peer-joined",
-    //     peer: peer.info,
-    //   });
-    // }
+    for (const otherPeerId in this.room) {
+      const otherPeer = this.room[otherPeerId];
+      // notify other peer that somebody joins (As WebRTC recipient)
+      this.sendToClient(otherPeer, {
+        type: "peer-joined",
+        detail: { peer: newPeer.info },
+      });
+    }
 
-    // // send existing peer-list to current peer
-    // const otherPeers: unknown[] = [];
-    // for (const otherPeerId in this.room) {
-    //   otherPeers.push(this.room[otherPeerId].info);
-    // }
-    // this.send(peer, {
-    //   type: "existing-peers",
-    //   peers: otherPeers,
-    // });
+    // send existing peer-list to current peer (As WebRTC caller)
+    const otherPeers: Record<string, PeerInfo> = {};
+    for (const otherPeerId in this.room) {
+      otherPeers[otherPeerId] = this.room[otherPeerId].info;
+    }
+    this.sendToClient(newPeer, {
+      type: "existing-peers",
+      detail: {
+        peers: otherPeers,
+        self: newPeer.info,
+      },
+    });
 
     // join room
     this.room[newPeer.peerId] = newPeer;
 
-    this.sendPeerListToClient();
+    // this.sendPeerListToClient();
   }
 
   private getAllPeerInfo(): Record<string, PeerInfo> {
@@ -167,8 +172,8 @@ class MyServer {
     return allPeers;
   }
 
-  private onMessage(sender: Peer, message: ws.RawData) {
-    let msg = {};
+  private onWsMsgFromClient(sender: Peer, message: ws.RawData) {
+    let msg: { type: string; detail?: object } = { type: "" };
     try {
       msg = JSON.parse(message as any);
     } catch (e) {
@@ -176,7 +181,7 @@ class MyServer {
     }
     // console.log("On Message!", sender.peerId, msg);
 
-    switch (msg["type"]) {
+    switch (msg.type) {
       case "disconnect":
         this.leaveRoom(sender);
         break;
@@ -186,13 +191,13 @@ class MyServer {
         break;
     }
 
-    // relay message to recipient
-    if (msg["to"]) {
-      const recipientId: string = msg["to"];
+    // relay message to recipient, including signal
+    if (msg.detail && msg.detail["to"]) {
+      const recipientId: string = msg.detail["to"];
       const recipient = this.room[recipientId];
-      delete msg["to"];
-      msg["sender"] = sender.peerId;
-      this.send(recipient, msg);
+      delete msg.detail["to"];
+      msg.detail["from"] = sender.peerId;
+      this.sendToClient(recipient, msg);
       return;
     }
   }
@@ -208,7 +213,7 @@ class MyServer {
       return;
     }
 
-    this.send(peer, { type: "ping" });
+    this.sendToClient(peer, { type: "ping" });
 
     peer.timerId = setTimeout(() => this.keepAlive(peer), timeout_ms);
   }
@@ -216,39 +221,42 @@ class MyServer {
   private leaveRoom(peer: Peer) {
     if (!this.room[peer.peerId]) return;
 
-    // TODO: If one browser opens two windows, closing one of them will trigger this function.
-
-    // this.room[peer.peerId].
-
     this.cancelKeepAlive(this.room[peer.peerId]);
 
     delete this.room[peer.peerId];
 
     peer.socket.terminate();
 
-    // for (const otherPeerId in this.room) {
-    //   const otherPeer = this.room[otherPeerId];
-    //   this.send(otherPeer, {
-    //     type: "peer-left",
-    //     peerId: peer.peerId,
-    //   });
-    // }
-    this.sendPeerListToClient();
-  }
-
-  private sendPeerListToClient() {
-    for (const peerId in this.room) {
-      this.send(peerId, {
-        type: "peers",
-        message: {
-          peerInfo: this.getAllPeerInfo(),
-          selfId: peerId,
+    console.log(Object.keys(this.room));
+    for (const otherPeerId in this.room) {
+      const otherPeer = this.room[otherPeerId];
+      this.sendToClient(otherPeer, {
+        type: "peer-left",
+        detail: {
+          peerId: peer.peerId,
         },
       });
     }
+
+    // this.sendPeerListToClient();
   }
 
-  private send(peerObjectOrId: Peer | string, message: object) {
+  // private sendPeerListToClient() {
+  //   for (const peerId in this.room) {
+  //     this.send(peerId, {
+  //       type: "peers",
+  //       message: {
+  //         peerInfo: this.getAllPeerInfo(),
+  //         selfId: peerId,
+  //       },
+  //     });
+  //   }
+  // }
+
+  private sendToClient(
+    peerObjectOrId: Peer | string,
+    message: { type: string; detail?: object }
+  ) {
     let peer: Peer | null = null;
     if (typeof peerObjectOrId === "string") {
       peer = this.room[peerObjectOrId];
@@ -257,6 +265,7 @@ class MyServer {
     }
     if (!peer) {
       console.error("Send: Peer doesn't exists.");
+      return;
     }
     if (peer.socket.readyState !== peer.socket.OPEN) return; // TODO to check
     const msg = JSON.stringify(message);

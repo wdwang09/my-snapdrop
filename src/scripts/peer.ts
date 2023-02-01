@@ -11,12 +11,12 @@ export type PeerInfo = {
   displayName: string;
 };
 
-class RTCPeer {
+export class RtcPeer {
   private serverConnection: ServerConnection;
-  readonly peerId: string;
-  private isCaller: boolean = false;
+  public readonly peerId: string;
+  public readonly isCaller: boolean = false;
   private rtcConn: RTCPeerConnection | null = null;
-  private channel: any; // TODO type
+  private channel: RTCDataChannel | null = null;
   static readonly rtcConfig = {
     sdpSemantics: "unified-plan",
     iceServers: [
@@ -26,52 +26,107 @@ class RTCPeer {
     ],
   };
 
-  constructor(serverConnection: ServerConnection, peerId: string) {
+  constructor(serverConnection: ServerConnection, peerIdOrNull: string | null) {
+    // console.log("Construct RtcPeer!");
     this.serverConnection = serverConnection;
-    this.peerId = peerId;
-    if (!this.peerId) return; // TODO
-    this.connect(peerId, true);
+    if (peerIdOrNull === null) {
+      // As WebRTC Recipient
+      this.isCaller = false;
+      this.peerId = "";
+    } else {
+      // As WebRTC Caller
+      this.isCaller = true;
+      this.peerId = peerIdOrNull;
+    }
+    if (!this.peerId) return;
+    this.connectWebRTC();
   }
 
-  private connect(peerId: string, isCaller: boolean) {
-    console.log("Connect WebRTC!");
-    if (!this.rtcConn) this.openConnection(peerId, isCaller);
+  private connectWebRTC() {
+    console.log("Connect WebRTC! isCaller:", this.isCaller);
+    // if (!this.rtcConn) this.openConnection(peerId);
+    if (!this.rtcConn) this.createRTCPeerConnection();
 
-    if (isCaller) {
-      this.openChannel();
+    if (this.isCaller) {
+      this.callerOpenChannel();
     } else {
+      // Don't createDataChannel
       this.rtcConn!.ondatachannel = (e) => this.onChannelOpened(e);
     }
   }
 
-  private openConnection(peerId: string, isCaller: boolean) {
-    this.isCaller = isCaller;
-    this.rtcConn = new RTCPeerConnection(RTCPeer.rtcConfig);
-    // this.rtcConn.onicecandidate = e => this.onIceCandidate(e);
-    // this.rtcConn.onconnectionstatechange = e => this.onConnectionStateChange(e);
-    // this.rtcConn.oniceconnectionstatechange = e => this.onIceConnectionStateChange(e);
+  private createRTCPeerConnection() {
+    this.rtcConn = new RTCPeerConnection(RtcPeer.rtcConfig);
+    this.rtcConn.onicecandidate = (e) => this.onIceCandidate(e);
+    this.rtcConn.onconnectionstatechange = (e) =>
+      this.onConnectionStateChange(e);
+    this.rtcConn.oniceconnectionstatechange = () =>
+      this.onIceConnectionStateChange();
   }
 
-  private openChannel() {
-    // https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/createDataChannel
-    const channel = this.rtcConn!.createDataChannel("data-channel", {
-      // https://developer.mozilla.org/en-US/docs/Web/API/RTCDataChannel/ordered
+  // https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/icecandidate_event
+  private onIceCandidate(event: RTCPeerConnectionIceEvent) {
+    if (!event.candidate) return;
+    this.sendSignal({ ice: event.candidate });
+  }
+
+  // https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/connectionstatechange_event
+  private onConnectionStateChange(event: Event) {
+    if (this.rtcConn === null) return;
+    console.log("RTC: state changed:", this.rtcConn.connectionState);
+    switch (this.rtcConn.connectionState) {
+      case "disconnected":
+        this.onChannelClosed();
+        break;
+      case "failed":
+        this.rtcConn = null;
+        this.onChannelClosed();
+        break;
+    }
+  }
+
+  // https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/iceconnectionstatechange_event
+  private onIceConnectionStateChange() {
+    if (this.rtcConn === null) return;
+    switch (this.rtcConn.iceConnectionState) {
+      case "failed":
+        console.error("ICE Gathering failed");
+        break;
+      default:
+        console.log("ICE Gathering", this.rtcConn.iceConnectionState);
+    }
+  }
+
+  // https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Connectivity
+  private callerOpenChannel() {
+    if (this.rtcConn === null) {
+      console.error("Impossible");
+      return;
+    }
+
+    // https://developer.mozilla.org/en-US/docs/Web/API/RtcPeerConnection/createDataChannel
+    const channel = this.rtcConn.createDataChannel("data-channel", {
       ordered: true,
     });
     channel.binaryType = "arraybuffer";
     channel.onopen = (e) => this.onChannelOpened(e);
-    // https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/createOffer
-    this.rtcConn!.createOffer()
+    // https://developer.mozilla.org/en-US/docs/Web/API/RtcPeerConnection/createOffer
+    this.rtcConn
+      .createOffer()
       .then((d) => this.onDescription(d))
       .catch((e) => {
         console.error(e);
       });
   }
 
+  // Both in caller and recipient
   private onChannelOpened(event: Event) {
-    console.log("RTC: channel opened with", this.peerId);
-    const channel = (event as any).channel || event.target;
-    console.info(channel); // TODO type!!!!!!!!!!!!!!
+    console.log(
+      `RTC (isCaller: ${this.isCaller}): channel opened with ${this.peerId}`
+    );
+    console.log("event.channel", (event as any).channel);
+    console.log("event.target", (event as any).target);
+    const channel: RTCDataChannel = (event as any).channel || event.target;
     channel.onmessage = (e: { data: string }) => this.onChannelMessage(e.data);
     channel.onclose = () => this.onChannelClosed();
     this.channel = channel;
@@ -79,6 +134,7 @@ class RTCPeer {
 
   private onChannelMessage(msg_str: string) {
     if (typeof msg_str !== "string") {
+      console.warn("onChannelMessage:", msg_str);
       // this.onChunkReceived(msg_str);
       return;
     }
@@ -109,12 +165,14 @@ class RTCPeer {
   }
 
   private onChannelClosed() {
+    if (!this.isCaller) return; // No recipient
     console.log("RTC: channel closed", this.peerId);
-    if (!this.isCaller) return;
-    this.connect(this.peerId, true); // reopen the channel
+    this.connectWebRTC(); // Caller reopen the channel
   }
 
   private onDescription(description: RTCSessionDescriptionInit) {
+    // console.log("onDescription", description.type, Date.now());
+    // https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/setLocalDescription
     this.rtcConn!.setLocalDescription(description)
       .then(() => this.sendSignal({ sdp: description }))
       .catch((e) => {
@@ -122,19 +180,51 @@ class RTCPeer {
       });
   }
 
-  private sendSignal(signal: {
-    sdp: RTCSessionDescriptionInit;
-    type?: string;
-    to?: string;
+  public onSignalMessage(message: {
+    from: string;
+    sdp?: RTCSessionDescriptionInit;
+    ice?: RTCIceCandidate;
   }) {
-    signal.type = "signal";
+    if (!this.isCaller) {
+      // recipient
+      this.connectWebRTC();
+    }
+
+    if (message.sdp) {
+      this.rtcConn!.setRemoteDescription(new RTCSessionDescription(message.sdp))
+        .then((_) => {
+          if (message.sdp!.type === "offer") {
+            return this.rtcConn!.createAnswer().then((d) =>
+              this.onDescription(d)
+            );
+          }
+        })
+        .catch((e) => console.error(e));
+    } else if (message.ice) {
+      this.rtcConn!.addIceCandidate(new RTCIceCandidate(message.ice));
+    }
+  }
+
+  private sendSignal(signal: {
+    sdp?: RTCSessionDescriptionInit;
+    ice?: RTCIceCandidate;
+    to?: string | null;
+  }) {
     signal.to = this.peerId;
-    this.serverConnection.sendToServer(signal);
+    const msg = { type: "signal", detail: signal };
+    this.serverConnection.sendToServer(msg);
+  }
+
+  public send(message: string | object) {
+    if (!this.channel) return this.refresh();
+    console.log("message:", message);
+    this.channel.send(message as any);
   }
 
   public refresh() {
     if (this.isConnected() || this.isConnecting()) return;
-    this.connect(this.peerId, this.isCaller);
+    // if (!this.peerId) return;
+    this.connectWebRTC();
   }
 
   public isConnected() {
@@ -146,28 +236,28 @@ class RTCPeer {
   }
 }
 
-export class PeersManager {
-  private serverConnection: ServerConnection;
-  private peers: Record<string, RTCPeer>;
+// export class PeersManager {
+//   private serverConnection: ServerConnection;
+//   private peers: Record<string, RtcPeer>;
 
-  constructor(serverConnection: ServerConnection) {
-    this.peers = {};
-    this.serverConnection = serverConnection;
-    PublicEvent.on("existing-peers", (e) =>
-      this.onExistingPeers((e as CustomEvent).detail)
-    );
-  }
+//   constructor(serverConnection: ServerConnection) {
+//     this.peers = {};
+//     this.serverConnection = serverConnection;
+//     // PublicEvent.on("existing-peers", (e) =>
+//     //   this.onExistingPeers((e as CustomEvent).detail)
+//     // );
+//   }
 
-  private onExistingPeers(peers: PeerInfo[]) {
-    peers.forEach((peer) => {
-      if (this.peers[peer.peerId]) {
-        this.peers[peer.peerId].refresh();
-      } else {
-        this.peers[peer.peerId] = new RTCPeer(
-          this.serverConnection,
-          peer.peerId
-        );
-      }
-    });
-  }
-}
+//   private onExistingPeers(peers: PeerInfo[]) {
+//     peers.forEach((peer) => {
+//       if (this.peers[peer.peerId]) {
+//         this.peers[peer.peerId].refresh();
+//       } else {
+//         this.peers[peer.peerId] = new RtcPeer(
+//           this.serverConnection,
+//           peer.peerId
+//         );
+//       }
+//     });
+//   }
+// }
