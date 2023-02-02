@@ -6,6 +6,7 @@ import type { PeerInfo } from "./scripts/peer";
 import { ref } from "vue";
 import type { Ref } from "vue";
 import ReceivedText from "./components/ReceivedText.vue";
+import OnePeer from "./components/OnePeer.vue";
 
 // let room = new Map<string, PeerInfo>();
 let peerInfos: Ref<Record<string, PeerInfo>> = ref({});
@@ -65,9 +66,16 @@ PublicEvent.on("signal", (event) => {
   peerConnecters[msg.from].onSignalMessage(msg);
 });
 
-function sendText(peerId: string) {
+function sendText(peerId: string): boolean {
   if (textToSend.value && peerConnecters[peerId]) {
-    peerConnecters[peerId].sendText(textToSend.value);
+    return peerConnecters[peerId].sendText(textToSend.value);
+  }
+  return false;
+}
+
+function sendFiles(peerId: string, fileList: FileList): void {
+  if (peerConnecters[peerId]) {
+    return peerConnecters[peerId].sendFiles(fileList);
   }
 }
 
@@ -86,16 +94,13 @@ function peerIdToName(peerId: string): string {
   <main>
     <ul>
       <template v-for="info in peerInfos" :key="info.peerId">
-        <li>
-          {{ info.displayName }}: {{ info.deviceName }}
-          <button @click="sendText(info.peerId)">Text</button>
-        </li>
+        <OnePeer :send-text="sendText" :send-files="sendFiles" :info="info" />
       </template>
     </ul>
 
     <div>Write text here:</div>
-    <textarea v-model="textToSend"/>
-    <ReceivedText :id_to_name="peerIdToName" />
+    <textarea v-model="textToSend" />
+    <ReceivedText :id-to-name="peerIdToName" />
   </main>
 </template>
 

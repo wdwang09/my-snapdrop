@@ -1,4 +1,6 @@
 import { PublicEvent } from "./public_event";
+import { FileChunkGenerator, FileDigester } from "./file";
+import type { FileInfo } from "./file";
 import type { ServerConnection } from "./connection";
 
 export type PeerInfo = {
@@ -14,16 +16,19 @@ export type PeerInfo = {
 export class RtcPeer {
   private serverConnection: ServerConnection;
   public readonly peerId: string;
+  private fileQueue: File[] = [];
+  private isSendingFile: boolean = false;
+  private chunkGenerator: FileChunkGenerator | null = null;
+  private digester: FileDigester | null = null;
+  private lastProgress: number = 0;
+
+  // RTC
   public readonly isCaller: boolean = false;
   private rtcConn: RTCPeerConnection | null = null;
   private channel: RTCDataChannel | null = null;
   static readonly rtcConfig = {
     sdpSemantics: "unified-plan",
-    iceServers: [
-      {
-        urls: "stun:stun.l.google.com:19302",
-      },
-    ],
+    iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
   };
 
   constructor(
@@ -43,26 +48,31 @@ export class RtcPeer {
     }
   }
 
-  private onRtcChannelMessage(msgStr: string) {
-    const message = JSON.parse(msgStr);
+  private onRtcChannelMessage(msgRaw: string | ArrayBuffer) {
+    if (typeof msgRaw !== "string") {
+      // file chunk
+      this.onFileChunkReceived(msgRaw);
+      return;
+    }
+    const message = JSON.parse(msgRaw);
     switch (message.type) {
-      // case 'header':
-      //     this._onFileHeader(message);
-      //     break;
-      // case 'partition':
-      //     this._onReceivedPartitionEnd(message);
-      //     break;
-      // case 'partition-received':
-      //     this._sendNextPartition();
-      //     break;
+      case "file-info":
+        this.onFileInfo(message.detail as FileInfo);
+        break;
+      case "file-partition":
+        this.onReceivedPartitionEnd(message);
+        break;
+      case "file-partition-received":
+        this.sendNextPartition();
+        break;
       // case 'progress':
       //     this._onDownloadProgress(message.progress);
       //     break;
-      // case 'transfer-complete':
-      //     this._onTransferCompleted();
+      // case 'file-transfer-complete':
+      //     this.onFileTransferCompleted();
       //     break;
       case "text":
-        console.log(`RTC Text: "${message.detail}" from ${this.peerId}`);
+        // console.log(`RTC Text: "${message.detail}" from ${this.peerId}`);
         PublicEvent.fire("text", {
           peerId: this.peerId,
           detail: message.detail,
@@ -72,6 +82,108 @@ export class RtcPeer {
         console.log("RTC:", message);
         console.warn(`message type "${message.type}" isn't supported.`);
     }
+  }
+
+  private onFileChunkReceived(chunk: ArrayBuffer) {
+    if (!chunk.byteLength) return;
+
+    this.digester!.getChunk(chunk);
+    const progress = this.digester!.getProgress();
+    // this.onDownloadProgress(progress);
+
+    // occasionally notify sender about our progress
+    if (progress - this.lastProgress < 0.01) return;
+    this.lastProgress = progress;
+    console.log("progress:", progress);
+    // this.sendProgress(progress);
+  }
+
+  private onFileInfo(fileInfo: FileInfo) {
+    console.log("Received file info", fileInfo);
+    this.lastProgress = 0;
+    this.digester = new FileDigester(
+      {
+        name: fileInfo.name,
+        type: fileInfo.type,
+        size: fileInfo.size,
+      }
+      // this.onFileReceived
+    );
+  }
+
+  private onFileReceived(/*file: FileInfo, blob: Blob*/) {
+    console.log("onFileReceived");
+    // Events.fire('file-received', proxyFile);
+    // this.sendToPeer({ type: 'file-transfer-complete' });
+  }
+
+  private onFileTransferCompleted() {
+    // this.onDownloadProgress(1);
+    // this.reader = null;  // TODO!!!
+    this.chunkGenerator = null;
+    this.isSendingFile = false;
+    this.dequeueFile();
+    // Events.fire('notify-user', 'File transfer completed.');
+  }
+
+  public sendText(msgStr: string): boolean {
+    const msg = {
+      type: "text",
+      detail: msgStr,
+    };
+    return this.sendToPeer(msg);
+  }
+
+  public sendFiles(fileList: FileList): void {
+    console.log("sendFiles", fileList.length);
+    for (let i = 0; i < fileList.length; i++) {
+      this.fileQueue.push(fileList[i]);
+    }
+    if (this.isSendingFile) return;
+    this.dequeueFile();
+  }
+
+  private dequeueFile() {
+    console.log("Dequeue file", this.fileQueue.length);
+    if (!this.fileQueue.length) return;
+    this.isSendingFile = true;
+    const file = this.fileQueue.shift()!;
+    this.sendOneFile(file);
+  }
+
+  private sendOneFile(file: File) {
+    const detail: FileInfo = {
+      name: file.name,
+      type: file.type,
+      size: file.size,
+    };
+    const msg = {
+      type: "file-info",
+      detail: detail,
+    };
+    this.sendToPeer(msg);
+    this.chunkGenerator = new FileChunkGenerator(
+      file,
+      (chunk) => this.sendRawToPeer(chunk),
+      (offset) => this.onPartitionEnd(offset)
+    );
+    this.chunkGenerator.nextPartition();
+  }
+
+  private onPartitionEnd(offset: number) {
+    this.sendToPeer({ type: "file-partition", detail: { offset: offset } });
+  }
+
+  private onReceivedPartitionEnd(offset: number) {
+    this.sendToPeer({
+      type: "file-partition-received",
+      detail: { offset: offset },
+    });
+  }
+
+  private sendNextPartition() {
+    if (!this.chunkGenerator || this.chunkGenerator.isFileEnd()) return;
+    this.chunkGenerator.nextPartition();
   }
 
   private connectWebRTC() {
@@ -253,24 +365,22 @@ export class RtcPeer {
     this.serverConnection.sendToServer(msg);
   }
 
-  public sendText(msgStr: string): boolean {
-    const msg = {
-      type: "text",
-      detail: msgStr,
-    };
-    return this.sendToPeer(msg);
-  }
-
   private sendToPeer(msgObj: object): boolean {
     const msg = JSON.stringify(msgObj);
+    return this.sendRawToPeer(msg);
+  }
+
+  private sendRawToPeer(msg: ArrayBuffer | string): boolean {
     if (!this.isConnected()) {
       // console.warn("this.channel.readyState", this.channel, this.channel!.readyState);
       this.refresh();
       console.warn("Send Fail:", msg);
       return false;
     }
-    console.log("msg sent to peer:", msg);
-    this.channel!.send(msg);
+    if (typeof msg === "string") {
+      console.log("msg sent to peer:", msg);
+    }
+    this.channel!.send(msg as any);
     return true;
   }
 

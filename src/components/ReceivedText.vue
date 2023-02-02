@@ -3,7 +3,7 @@ import { PublicEvent } from "@/scripts/public_event";
 import { ref } from "vue";
 
 const props = defineProps<{
-  id_to_name?: (id: string) => string;
+  idToName?: (id: string) => string;
 }>();
 
 let displayName = ref("");
@@ -15,8 +15,8 @@ PublicEvent.on("text", (event) => {
     peerId: string;
   } = (event as CustomEvent).detail;
   text.value = (event as CustomEvent).detail.detail;
-  if (props.id_to_name) {
-    displayName.value = props.id_to_name(textMsg.peerId);
+  if (props.idToName) {
+    displayName.value = props.idToName(textMsg.peerId);
   } else {
     displayName.value = textMsg.peerId;
   }
