@@ -1,12 +1,11 @@
 <script setup lang="ts">
-import HelloWorld from "./components/HelloWorld.vue";
 import { ServerConnection } from "./scripts/connection";
 import { RtcPeer } from "./scripts/peer";
 import { PublicEvent } from "./scripts/public_event";
 import type { PeerInfo } from "./scripts/peer";
 import { ref } from "vue";
 import type { Ref } from "vue";
-// import OnePeer from "./components/OnePeer.vue";
+import ReceivedText from "./components/ReceivedText.vue";
 
 // let room = new Map<string, PeerInfo>();
 let peerInfos: Ref<Record<string, PeerInfo>> = ref({});
@@ -52,6 +51,7 @@ PublicEvent.on("peer-left", (event) => {
   }
 });
 
+// Receive WebRTC Signal
 PublicEvent.on("signal", (event) => {
   const msg: { from: string } = (event as CustomEvent).detail;
   // console.log("Vue signal", Object.keys(msg));
@@ -66,17 +66,23 @@ PublicEvent.on("signal", (event) => {
 
 function sendTextDemo(peerId: string) {
   if (peerConnecters[peerId]) {
-    peerConnecters[peerId].sendToPeer({ type: "text", message: "123" });
+    peerConnecters[peerId].sendText("123\n456");
+  }
+}
+
+function peerIdToName(peerId: string): string {
+  if (peerInfos.value[peerId] && peerInfos.value[peerId].displayName) {
+    return peerInfos.value[peerId].displayName;
+  } else {
+    return peerId;
   }
 }
 </script>
 
 <template>
-  <header>
-    <div class="wrapper">
-      <HelloWorld :msg="displayName" />
-    </div>
-  </header>
+  <h1>
+    {{ displayName }}
+  </h1>
 
   <main>
     <ul>
@@ -90,6 +96,8 @@ function sendTextDemo(peerId: string) {
       </li> -->
       </template>
     </ul>
+
+    <ReceivedText :id_to_name="peerIdToName" />
   </main>
 </template>
 

@@ -1,4 +1,4 @@
-// import { PublicEvent } from "./public_event";
+import { PublicEvent } from "./public_event";
 import type { ServerConnection } from "./connection";
 
 export type PeerInfo = {
@@ -40,6 +40,37 @@ export class RtcPeer {
       this.connectWebRTC();
     } else {
       // As WebRTC Recipient
+    }
+  }
+
+  private onRtcChannelMessage(msgStr: string) {
+    const message = JSON.parse(msgStr);
+    switch (message.type) {
+      // case 'header':
+      //     this._onFileHeader(message);
+      //     break;
+      // case 'partition':
+      //     this._onReceivedPartitionEnd(message);
+      //     break;
+      // case 'partition-received':
+      //     this._sendNextPartition();
+      //     break;
+      // case 'progress':
+      //     this._onDownloadProgress(message.progress);
+      //     break;
+      // case 'transfer-complete':
+      //     this._onTransferCompleted();
+      //     break;
+      case "text":
+        console.log(`RTC Text: "${message.detail}" from ${this.peerId}`);
+        PublicEvent.fire("text", {
+          peerId: this.peerId,
+          detail: message.detail,
+        });
+        break;
+      default:
+        console.log("RTC:", message);
+        console.warn(`message type "${message.type}" isn't supported.`);
     }
   }
 
@@ -138,44 +169,13 @@ export class RtcPeer {
       console.error("No RTCDataChannel");
       return;
     }
-    channel.onmessage = (e: { data: string }) => this.onChannelMessage(e.data);
+    channel.onmessage = (e: { data: string }) =>
+      this.onRtcChannelMessage(e.data);
     channel.onclose = () => this.onChannelClosed();
     this.channel = channel;
     console.log(
       `RTC (${this.isCaller ? "caller" : "recipient"}): channel opened.`
     );
-  }
-
-  private onChannelMessage(msgStr: string) {
-    if (typeof msgStr !== "string") {
-      console.error("onChannelMessage:", msgStr);
-      // this.onChunkReceived(msg_str);
-      return;
-    }
-    const message = JSON.parse(msgStr);
-    switch (message.type) {
-      // case 'header':
-      //     this._onFileHeader(message);
-      //     break;
-      // case 'partition':
-      //     this._onReceivedPartitionEnd(message);
-      //     break;
-      // case 'partition-received':
-      //     this._sendNextPartition();
-      //     break;
-      // case 'progress':
-      //     this._onDownloadProgress(message.progress);
-      //     break;
-      // case 'transfer-complete':
-      //     this._onTransferCompleted();
-      //     break;
-      case 'text':
-        console.log(`RTC Text: "${message.message}" from ${this.peerId}`);
-        break;
-      default:
-        console.log("RTC:", message);
-        console.warn(`message type "${message.type}" isn't supported.`);
-    }
   }
 
   private onChannelClosed() {
@@ -253,13 +253,16 @@ export class RtcPeer {
     this.serverConnection.sendToServer(msg);
   }
 
-  public sendToPeer(msgStrOrObj: string | object): boolean {
-    let msg = "";
-    if (typeof msgStrOrObj === "object") {
-      msg = JSON.stringify(msgStrOrObj);
-    } else {
-      msg = msgStrOrObj;
-    }
+  public sendText(msgStr: string): boolean {
+    const msg = {
+      type: "text",
+      detail: msgStr,
+    };
+    return this.sendToPeer(msg);
+  }
+
+  private sendToPeer(msgObj: object): boolean {
+    const msg = JSON.stringify(msgObj);
     if (!this.isConnected()) {
       // console.warn("this.channel.readyState", this.channel, this.channel!.readyState);
       this.refresh();
@@ -271,7 +274,7 @@ export class RtcPeer {
     return true;
   }
 
-  public refresh() {
+  private refresh() {
     if (this.isConnected() || this.isConnecting()) return;
     // if (!this.peerId) return;
     this.connectWebRTC();
@@ -286,29 +289,3 @@ export class RtcPeer {
     return this.channel && this.channel.readyState === "connecting";
   }
 }
-
-// export class PeersManager {
-//   private serverConnection: ServerConnection;
-//   private peers: Record<string, RtcPeer>;
-
-//   constructor(serverConnection: ServerConnection) {
-//     this.peers = {};
-//     this.serverConnection = serverConnection;
-//     // PublicEvent.on("existing-peers", (e) =>
-//     //   this.onExistingPeers((e as CustomEvent).detail)
-//     // );
-//   }
-
-//   private onExistingPeers(peers: PeerInfo[]) {
-//     peers.forEach((peer) => {
-//       if (this.peers[peer.peerId]) {
-//         this.peers[peer.peerId].refresh();
-//       } else {
-//         this.peers[peer.peerId] = new RtcPeer(
-//           this.serverConnection,
-//           peer.peerId
-//         );
-//       }
-//     });
-//   }
-// }
