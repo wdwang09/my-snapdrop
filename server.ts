@@ -63,7 +63,7 @@ class Peer {
 
     if (!deviceName) deviceName = "Unknown Device";
 
-    const displayName = this.peerId.slice(0, 8);
+    const displayName = this.peerId.slice(0, 4);
 
     this.info = {
       peerId: this.peerId,

@@ -67,7 +67,7 @@ export class ServerConnection {
   public sendToServer(message: { type: string; detail?: object }) {
     if (!this.isConnected()) {
       console.log(
-        "WebRTC isn't connected.",
+        "WebSocket isn't connected.",
         this.socket,
         this.socket!.readyState
       );

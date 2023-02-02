@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ServerConnection } from "./scripts/connection";
-import { RtcPeer } from "./scripts/peer";
 import { PublicEvent } from "./scripts/public_event";
+import { RtcPeer } from "./scripts/peer";
 import type { PeerInfo } from "./scripts/peer";
 import { ref } from "vue";
 import type { Ref } from "vue";
@@ -13,6 +13,7 @@ let peerConnecters: Record<string, RtcPeer> = {};
 
 // let selfId = ref("");
 let displayName = ref("");
+let textToSend = ref("");
 
 // new ServerConnection();
 const server = new ServerConnection();
@@ -64,9 +65,9 @@ PublicEvent.on("signal", (event) => {
   peerConnecters[msg.from].onSignalMessage(msg);
 });
 
-function sendTextDemo(peerId: string) {
-  if (peerConnecters[peerId]) {
-    peerConnecters[peerId].sendText("123\n456");
+function sendText(peerId: string) {
+  if (textToSend.value && peerConnecters[peerId]) {
+    peerConnecters[peerId].sendText(textToSend.value);
   }
 }
 
@@ -80,23 +81,20 @@ function peerIdToName(peerId: string): string {
 </script>
 
 <template>
-  <h1>
-    {{ displayName }}
-  </h1>
+  <h1>{{ displayName }}</h1>
 
   <main>
     <ul>
       <template v-for="info in peerInfos" :key="info.peerId">
         <li>
           {{ info.displayName }}: {{ info.deviceName }}
-          <button @click="sendTextDemo(info.peerId)">123</button>
+          <button @click="sendText(info.peerId)">Text</button>
         </li>
-        <!-- <li v-if="info.peerId != selfId">
-        <OnePeer :info="info"/>
-      </li> -->
       </template>
     </ul>
 
+    <div>Write text here:</div>
+    <textarea v-model="textToSend"/>
     <ReceivedText :id_to_name="peerIdToName" />
   </main>
 </template>
