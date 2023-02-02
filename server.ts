@@ -183,6 +183,7 @@ class MyServer {
 
     switch (msg.type) {
       case "disconnect":
+        console.log("Disconnect:", sender.peerId);
         this.leaveRoom(sender);
         break;
       case "pong":
@@ -197,6 +198,7 @@ class MyServer {
       const recipient = this.room[recipientId];
       delete msg.detail["to"];
       msg.detail["from"] = sender.peerId;
+      // console.log("Details:", msg.detail);
       this.sendToClient(recipient, msg);
       return;
     }
@@ -227,7 +229,7 @@ class MyServer {
 
     peer.socket.terminate();
 
-    console.log(Object.keys(this.room));
+    // console.log(Object.keys(this.room));
     for (const otherPeerId in this.room) {
       const otherPeer = this.room[otherPeerId];
       this.sendToClient(otherPeer, {

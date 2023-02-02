@@ -53,7 +53,7 @@ export class ServerConnection {
       //   console.log("WS self-info:", msg.message);
       //   break;
       case "signal": // webRTC
-        // console.log("WS signal:", msg.detail.from);
+        // console.log("WS signal:", msg.detail);
         PublicEvent.fire("signal", msg.detail);
         break;
       case "ping":
@@ -65,7 +65,14 @@ export class ServerConnection {
   }
 
   public sendToServer(message: { type: string; detail?: object }) {
-    if (!this.isConnected()) return;
+    if (!this.isConnected()) {
+      console.log(
+        "WebRTC isn't connected.",
+        this.socket,
+        this.socket!.readyState
+      );
+      return;
+    }
     this.socket!.send(JSON.stringify(message));
   }
 
