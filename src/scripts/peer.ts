@@ -119,7 +119,6 @@ export class RtcPeer {
 
   private onFileTransferCompleted() {
     // this.onDownloadProgress(1);
-    // this.reader = null;  // TODO!!!
     this.chunkGenerator = null;
     this.isSendingFile = false;
     this.dequeueFile();
@@ -135,7 +134,7 @@ export class RtcPeer {
   }
 
   public sendFiles(fileList: FileList): void {
-    console.log("sendFiles", fileList.length);
+    console.log("Num of files:", fileList.length);
     for (let i = 0; i < fileList.length; i++) {
       this.fileQueue.push(fileList[i]);
     }
@@ -217,7 +216,7 @@ export class RtcPeer {
   // https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/connectionstatechange_event
   private onConnectionStateChange(/*_event: Event*/) {
     if (this.rtcConn === null) return;
-    console.log("RTC: state changed:", this.rtcConn.connectionState);
+    // console.log("RTC: state changed:", this.rtcConn.connectionState);
     switch (this.rtcConn.connectionState) {
       case "disconnected":
         this.onChannelClosed();
@@ -244,10 +243,11 @@ export class RtcPeer {
         console.error("ICE Gathering failed");
         break;
       default:
-        console.log(
-          "onIceConnectionStateChange: ICE Gathering:",
-          this.rtcConn.iceConnectionState
-        );
+        // console.log(
+        //   "onIceConnectionStateChange: ICE Gathering:",
+        //   this.rtcConn.iceConnectionState
+        // );
+        break;
     }
   }
 
@@ -326,18 +326,18 @@ export class RtcPeer {
     }
 
     if (message.sdp) {
-      console.log("Receive SDP", message.sdp);
+      // console.log("Receive SDP", message.sdp);
       if (this.rtcConn === null) {
         console.error("rtcConn shouldn't be null.");
       }
       const rtcSessionDescription = new RTCSessionDescription(message.sdp);
-      console.log("RTCSessionDescription(message.sdp)", rtcSessionDescription);
+      // console.log("RTCSessionDescription(message.sdp)", rtcSessionDescription);
       const setRemoteDescriptionAsync = this.rtcConn!.setRemoteDescription(
         rtcSessionDescription
       );
       setRemoteDescriptionAsync
         .then(() => {
-          console.log("After setRemoteDescription", rtcSessionDescription.type);
+          // console.log("After setRemoteDescription", rtcSessionDescription.type);
           if (rtcSessionDescription.type === "offer") {
             return this.rtcConn!.createAnswer().then((d) => {
               // console.log("After create answer.", d);
@@ -349,7 +349,7 @@ export class RtcPeer {
         })
         .catch((e) => console.error(e));
     } else if (message.ice) {
-      console.log("Receive ICE");
+      // console.log("Receive ICE");
       this.rtcConn!.addIceCandidate(new RTCIceCandidate(message.ice));
     }
   }
@@ -359,9 +359,9 @@ export class RtcPeer {
     ice?: RTCIceCandidate;
     to?: string | null;
   }) {
-    signal.to = this.peerId; // TODO: to is ""
+    signal.to = this.peerId;
     const msg = { type: "signal", detail: signal };
-    console.log("sendSignal", msg.detail);
+    // console.log("sendSignal", msg.detail);
     this.serverConnection.sendToServer(msg);
   }
 

@@ -1,11 +1,11 @@
 import * as express from "express";
+import { Server as SioServer } from "socket.io";
+import type { Socket as SioSocket } from "socket.io";
+import * as uaParser from "ua-parser-js";
 import { createServer as createViteServer } from "vite";
-import { env } from "process";
 import { createServer as createHttpServer } from "http";
 import type * as http from "http";
-import { Server as WsServer } from "ws";
-import type * as ws from "ws";
-import * as uaParser from "ua-parser-js";
+import { env } from "process";
 
 type PeerInfo = {
   peerId: string;
@@ -18,19 +18,14 @@ type PeerInfo = {
 };
 
 class Peer {
-  socket: ws.WebSocket;
+  socket: SioSocket;
   peerId: string;
   info: PeerInfo;
-  timerId: NodeJS.Timeout | null;
-  lastBeat: number;
 
-  constructor(socket: ws.WebSocket, request: http.IncomingMessage) {
+  constructor(socket: SioSocket, request: http.IncomingMessage) {
     this.socket = socket;
     this.setPeerId(request);
     this.setInfo(request);
-    // for keepalive
-    this.timerId = null;
-    this.lastBeat = Date.now();
 
     // console.log("===");
     // console.log("peer:", this.peerId);
@@ -102,37 +97,34 @@ class Peer {
 }
 
 class MyServer {
-  private wss: WsServer<ws.WebSocket>;
+  private sioServer: SioServer;
   private room: Record<string, Peer>;
 
-  constructor(httpServer: http.Server) {
-    this.wss = new WsServer({ server: httpServer });
-    this.wss.on("connection", (socket, request) =>
-      this.onConnection(new Peer(socket, request))
-    );
-    this.wss.on("headers", (headers, response) =>
-      this.onHeaders(headers, response)
+  constructor(sioServer: SioServer) {
+    this.sioServer = sioServer;
+    this.sioServer.on("connection", (socket) => {
+      const peer = new Peer(socket, socket.request);
+      this.joinRoom(peer);
+      // this.onConnection();
+
+      socket.on("message", (message: { type: string; detail: object }) =>
+        this.onWsMsgFromClient(peer, message)
+      );
+
+      socket.on("disconnect", () => {
+        console.log("Disconnect:", peer.peerId);
+        this.leaveRoom(peer);
+      });
+    });
+
+    this.sioServer.engine.on(
+      "headers",
+      (headers: string[], response: http.IncomingMessage) => {
+        this.onHeaders(headers, response);
+      }
     );
 
     this.room = {};
-  }
-
-  private onConnection(peer: Peer) {
-    this.joinRoom(peer);
-    peer.socket.on("message", (message) =>
-      this.onWsMsgFromClient(peer, message)
-    );
-    peer.socket.on("error", console.error);
-    this.keepAlive(peer);
-
-    // this.send(peer, {
-    //   type: "self-info",
-    //   message: {
-    //     peerId: peer.peerId,
-    //     displayName: peer.info.displayName,
-    //     deviceName: peer.info.deviceName,
-    //   },
-    // });
   }
 
   private joinRoom(newPeer: Peer) {
@@ -160,8 +152,6 @@ class MyServer {
 
     // join room
     this.room[newPeer.peerId] = newPeer;
-
-    // this.sendPeerListToClient();
   }
 
   private getAllPeerInfo(): Record<string, PeerInfo> {
@@ -172,25 +162,11 @@ class MyServer {
     return allPeers;
   }
 
-  private onWsMsgFromClient(sender: Peer, message: ws.RawData) {
-    let msg: { type: string; detail?: object } = { type: "" };
-    try {
-      msg = JSON.parse(message as any);
-    } catch (e) {
-      return;
-    }
+  private onWsMsgFromClient(
+    sender: Peer,
+    msg: { type: string; detail: object }
+  ) {
     // console.log("On Message!", sender.peerId, msg);
-
-    switch (msg.type) {
-      case "disconnect":
-        console.log("Disconnect:", sender.peerId);
-        this.leaveRoom(sender);
-        break;
-      case "pong":
-        sender.lastBeat = Date.now();
-        // this.sendPeerListToClient();
-        break;
-    }
 
     // relay message to recipient, including signal
     if (msg.detail && msg.detail["to"]) {
@@ -204,30 +180,12 @@ class MyServer {
     }
   }
 
-  private keepAlive(peer: Peer) {
-    this.cancelKeepAlive(peer);
-    const timeout_ms = 5000;
-    if (!peer.lastBeat) {
-      peer.lastBeat = Date.now();
-    }
-    if (Date.now() - peer.lastBeat > 2 * timeout_ms) {
-      this.leaveRoom(peer);
-      return;
-    }
-
-    this.sendToClient(peer, { type: "ping" });
-
-    peer.timerId = setTimeout(() => this.keepAlive(peer), timeout_ms);
-  }
-
   private leaveRoom(peer: Peer) {
     if (!this.room[peer.peerId]) return;
 
-    this.cancelKeepAlive(this.room[peer.peerId]);
-
     delete this.room[peer.peerId];
 
-    peer.socket.terminate();
+    peer.socket.disconnect();
 
     // console.log(Object.keys(this.room));
     for (const otherPeerId in this.room) {
@@ -239,25 +197,11 @@ class MyServer {
         },
       });
     }
-
-    // this.sendPeerListToClient();
   }
-
-  // private sendPeerListToClient() {
-  //   for (const peerId in this.room) {
-  //     this.send(peerId, {
-  //       type: "peers",
-  //       message: {
-  //         peerInfo: this.getAllPeerInfo(),
-  //         selfId: peerId,
-  //       },
-  //     });
-  //   }
-  // }
 
   private sendToClient(
     peerObjectOrId: Peer | string,
-    message: { type: string; detail?: object }
+    message: { type: string; detail: object }
   ) {
     let peer: Peer | null = null;
     if (typeof peerObjectOrId === "string") {
@@ -269,12 +213,10 @@ class MyServer {
       console.error("Send: Peer doesn't exists.");
       return;
     }
-    if (peer.socket.readyState !== peer.socket.OPEN) return; // TODO to check
-    const msg = JSON.stringify(message);
-    peer.socket.send(msg, () => "");
+    peer.socket.emit("message", message);
   }
 
-  private onHeaders(headers: string[], response: http.IncomingMessage) {
+  private onHeaders(headers: object, response: http.IncomingMessage) {
     if (
       response.headers.cookie &&
       response.headers.cookie.indexOf("peerid=") > -1
@@ -282,15 +224,8 @@ class MyServer {
       return;
     }
     response["peerId"] = Peer.uuid();
-    headers.push(
-      "Set-Cookie: peerid=" + response["peerId"] + "; SameSite=Strict; Secure"
-    );
-  }
-
-  private cancelKeepAlive(peer: Peer) {
-    if (peer.timerId) {
-      clearTimeout(peer.timerId);
-    }
+    headers["Set-Cookie"] =
+      "peerid=" + response["peerId"] + "; SameSite=Strict; Secure";
   }
 }
 
@@ -315,9 +250,10 @@ async function createServer(port = 3000) {
   }
 
   console.log(`> Server is ready on http://localhost:${port}`);
-  const server = createHttpServer(app);
-  server.listen(port);
-  new MyServer(server);
+  const httpServer = createHttpServer(app);
+  const io = new SioServer(httpServer);
+  new MyServer(io);
+  httpServer.listen(port);
 }
 
 createServer(3000);

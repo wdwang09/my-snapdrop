@@ -19,7 +19,9 @@ function onFilesChanged(event: Event) {
     {{ info.displayName }}: {{ info.deviceName }}
     <button @click="sendText(info.peerId)">Text</button>
     <br />
-    <input type="file" multiple @change="onFilesChanged" />
+    <input type="file" @change="onFilesChanged" />
+    <!-- <input type="file" multiple @change="onFilesChanged" /> -->
+    <!-- Currently don't support multiple files. -->
   </li>
 </template>
 

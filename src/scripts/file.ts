@@ -12,8 +12,8 @@ export class FileChunkGenerator {
 
   private offset = 0;
   private partitionSize = 0;
-  private readonly chunkSize = 64000; // 64 KB
-  private readonly maxPartitionSize = 1e6; // 1 MB
+  private readonly chunkSize = 128000; // 128 KB
+  private readonly maxPartitionSize = 3e6; // 3 MB
 
   constructor(
     file: File,
